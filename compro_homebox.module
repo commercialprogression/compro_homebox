@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the Homebox Dashboard feature.
+ */
+
+include_once 'compro_homebox.features.inc';

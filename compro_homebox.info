@@ -1,0 +1,9 @@
+name = Homebox Dashboard
+description = Custom deshboard of recent content and other useful tasks
+core = 7.x
+package = Features
+version = 7.x-0.1
+project = compro_homebox
+dependencies[] = homebox
+features[features_api][] = api:2
+features[homebox][] = compro_homebox
