@@ -5,3 +5,152 @@
  */
 
 include_once 'compro_homebox.features.inc';
+
+/**
+ * Implements hook_block_info().
+ */
+function compro_homebox_block_info() {
+  return array(
+    'overview' => array(
+      'info' => t('Site overview'),
+    ),
+    'status' => array(
+      'info' => t('Status report'),
+      'properties' => array(
+        'administrative' => TRUE,
+      ),
+    ),
+  );
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function compro_homebox_block_view($delta = '') {
+  $block = array('subject' => NULL, 'content' => NULL);
+
+  switch ($delta) {
+    case 'overview':
+      $site_name = variable_get('site_name', 'Site');
+      $block['subject'] = t('Overview for') . ' ' . check_plain($site_name);
+      $block['content'] = compro_homebox_overview();
+      break;
+    
+    case 'status':
+      if (user_access('administer site configuration')) {
+        module_load_include('inc', 'system', 'system.admin');
+        $block['subject'] = t('Status report');
+        $block['content'] = system_status();
+      }
+      break;
+  }
+  
+  return $block;
+}
+
+/**
+ * Block callback for site status.
+ */
+function compro_homebox_overview($reset = FALSE) {
+  $output = &drupal_static(__FUNCTION__);
+  if (!isset($output) || $reset) {
+    // Db cache this block, as getting this info is intense.
+    if (($cache = cache_get('compro_homebox_overview')) && !$reset) {
+      $output = $cache->data;
+    }
+    else {
+      global $base_url;
+      
+      $output = array(
+        '#prefix' => 'At-a-glance stats about your site:',
+        '#type' => 'table',
+        '#header' => array(t('Label'), t('Value')),
+        '#rows' => array(),
+        '#attributes' => array(
+          'class' => array('system-status-report'),
+        ),
+      );
+      
+      // Get status report pieces.
+      $requirements = module_invoke_all('requirements', 'runtime');
+      usort($requirements, '_system_sort_requirements');
+      
+      // Get counts for status report requirements.
+      $req_count = count($requirements);
+      $warnings = 0;
+      $errors = 0;
+      foreach ($requirements as $requirement) {
+        if (isset($requirement['severity'])) {
+          if ($requirement['severity'] == REQUIREMENT_WARNING) {
+            $warnings++;
+          }
+          else if ($requirement['severity'] == REQUIREMENT_ERROR) {
+            $errors++;
+          }
+        }
+      }
+      
+      $output['#rows'][] = array(
+        'class' => array('info'),
+        'data' => array(
+          l('Status report', 'admin/reports/status'),
+          t('%req_count requirements, %warnings warnings and %errors errors', array(
+            '%req_count' => $req_count,
+            '%warnings' => $warnings,
+            '%errors' => $errors,
+          )),
+        ),
+      );
+  
+      // Enabled modules out of total.
+      module_load_include('inc', 'system', 'system.admin');
+      $files = system_rebuild_module_data();
+
+      $total_modules = 0;
+      $enabled_modules = 0;
+      foreach ($files as $filename => $file) {
+        if (empty($file->info['hidden'])) {
+          $total_modules++;
+          if ($file->status) {
+            $enabled_modules++;
+          }
+        }
+      }
+      
+      $output['#rows'][] = array(
+        'class' => array('info'),
+        'data' => array(
+          l('Modules', 'admin/modules'),
+          t('%enabled_modules enabled of %total_modules total', array(
+            '%enabled_modules' => $enabled_modules,
+            '%total_modules' => $total_modules,
+          )),
+        ),
+      );
+      
+      // Entity counts.
+      $entity_info = entity_get_info();
+      foreach ($entity_info as $key => $info) {
+        foreach ($info['bundles'] as $type => $bundle) {
+          $query = new EntityFieldQuery();
+          $query
+            ->entityCondition('entity_type', $key)
+            ->entityCondition('bundle', $type)
+            ->count();
+          $count = $query->execute();
+          $output['#rows'][] = array(
+            'class' => array('ok'),
+            'data' => array(
+              $bundle['label'] . 's (' . $info['label'] . ')',
+              $count,
+            ),
+          );
+        }
+      }
+      
+      cache_set('compro_homebox_overview', $output, 'cache', (time() + 86400));
+    }
+  }
+  
+  return $output;
+}
